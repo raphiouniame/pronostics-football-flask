@@ -1,0 +1,24 @@
+# Fichiers générés automatiquement
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Dossier templates généré à l'exécution
+/templates/
+
+# Environnement virtuel
+/venv/
+/env/
+/__pycache__/
+
+# Logs
+*.log
+*.env
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

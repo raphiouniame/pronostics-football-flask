@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: football-predictions
+    runtime: python-3.11.0
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "true"
+      - key: FLASK_ENV
+        value: production
