@@ -667,10 +667,10 @@ def not_found(error):
 
 
 if __name__ == '__main__':
-    print("🚀 Démarrage de l'application de pronostics football...")
-    print("📊 Base de données: {} équipes de {} ligues".format(
+    print("Démarrage de l'application de pronostics football...")
+    print("Base de données: {} équipes de {} ligues".format(
         len(TEAMS_STATS),
         len(set(stats['league'] for stats in TEAMS_STATS.values()))
     ))
-    print("🌐 Accès: http://localhost:5000")
+    print("Accès: http://localhost:5000")
     app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
