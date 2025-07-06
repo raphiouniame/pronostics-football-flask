@@ -1,24 +1,151 @@
-# Fichiers générés automatiquement
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# ===== FICHIERS PYTHON =====
+# Bytecode compilé
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ===== ENVIRONNEMENTS VIRTUELS =====
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ===== BASES DE DONNÉES =====
 *.db
 *.sqlite3
+*.sqlite
+instance/
+.webassets-cache
 
-# Dossier templates généré à l'exécution
-/templates/
-
-# Environnement virtuel
-/venv/
-/env/
-/__pycache__/
-
-# Logs
+# ===== LOGS ET FICHIERS TEMPORAIRES =====
 *.log
-*.env
+*.tmp
+*.temp
 *.swp
+*.swo
+*~
 
-# OS
+# ===== CONFIGURATION ET SECRETS =====
+.env
+.env.local
+.env.production
+.env.staging
+config.py
+secrets.json
+
+# ===== FICHIERS SYSTÈME =====
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+\#*\#
+.\#*
+
+# ===== ÉDITEURS ET IDE =====
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ===== TEMPLATES ET STATIQUES =====
+# Garder le dossier templates mais ignorer les fichiers temporaires
+!/templates/
+/templates/*.tmp
+/templates/*.bak
+
+# Fichiers statiques générés
+/static/compiled/
+/static/dist/
+
+# ===== TESTS ET COVERAGE =====
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+htmlcov/
+
+# ===== JUPYTER NOTEBOOKS =====
+.ipynb_checkpoints
+
+# ===== DEPLOYMENT =====
+# Render
+.render/
+
+# Heroku
+.heroku/
+
+# Docker
+.dockerignore
+Dockerfile.dev
+
+# ===== DONNÉES ET CACHE =====
+# Cache des requêtes
+cache/
+.cache/
+
+# Données de scraping temporaires
+scraped_data/
+*.json.bak
+
+# ===== AUTRES =====
+# Fichiers de backup
+*.bak
+*.backup
+*.old
+
+# Fichiers de debug
+debug.log
+error.log
+
+# Fichiers de profiling
+*.prof

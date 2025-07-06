@@ -2,9 +2,10 @@ services:
   - type: web
     name: football-predictions
     runtime: python-3.11.0
-    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app --workers 2 --timeout 60
     envVars:
       - key: PYTHONUNBUFFERED
         value: "true"
       - key: FLASK_ENV
         value: production
+    healthCheckPath: /health

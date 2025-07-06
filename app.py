@@ -1,3 +1,6 @@
+import os
+import logging
+import sys
 from flask import Flask, render_template, jsonify
 from datetime import datetime, timedelta
 import requests
@@ -8,6 +11,15 @@ import random
 from urllib.parse import urljoin
 
 app = Flask(__name__)
+
+if not app.debug:
+    logging.basicConfig(
+        stream=sys.stdout,
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s %(name)s %(message)s'
+    )
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('Application démarrée en mode production')
 
 # Headers pour éviter la détection de bot
 HEADERS = {
@@ -35,7 +47,6 @@ TEAMS_STATS = {
     'Angers': {'attack': 56, 'defense': 62, 'forme': 62, 'league': 'Ligue 1'},
     'Auxerre': {'attack': 59, 'defense': 66, 'forme': 66, 'league': 'Ligue 1'},
     'Saint-Étienne': {'attack': 57, 'defense': 63, 'forme': 63, 'league': 'Ligue 1'},
-    
     # Premier League
     'Manchester City': {'attack': 94, 'defense': 87, 'forme': 90, 'league': 'Premier League'},
     'Arsenal': {'attack': 88, 'defense': 83, 'forme': 86, 'league': 'Premier League'},
@@ -47,7 +58,6 @@ TEAMS_STATS = {
     'Brighton': {'attack': 74, 'defense': 73, 'forme': 74, 'league': 'Premier League'},
     'Aston Villa': {'attack': 77, 'defense': 76, 'forme': 77, 'league': 'Premier League'},
     'West Ham': {'attack': 71, 'defense': 72, 'forme': 72, 'league': 'Premier League'},
-    
     # La Liga
     'Barcelona': {'attack': 95, 'defense': 88, 'forme': 92, 'league': 'La Liga'},
     'Real Madrid': {'attack': 96, 'defense': 85, 'forme': 91, 'league': 'La Liga'},
@@ -59,7 +69,6 @@ TEAMS_STATS = {
     'Valencia': {'attack': 69, 'defense': 71, 'forme': 70, 'league': 'La Liga'},
     'Sevilla': {'attack': 72, 'defense': 74, 'forme': 73, 'league': 'La Liga'},
     'Getafe': {'attack': 65, 'defense': 75, 'forme': 70, 'league': 'La Liga'},
-    
     # Serie A
     'Juventus': {'attack': 87, 'defense': 84, 'forme': 85, 'league': 'Serie A'},
     'Inter Milan': {'attack': 89, 'defense': 86, 'forme': 88, 'league': 'Serie A'},
@@ -69,7 +78,6 @@ TEAMS_STATS = {
     'Lazio': {'attack': 79, 'defense': 75, 'forme': 77, 'league': 'Serie A'},
     'Atalanta': {'attack': 86, 'defense': 73, 'forme': 80, 'league': 'Serie A'},
     'Fiorentina': {'attack': 76, 'defense': 74, 'forme': 75, 'league': 'Serie A'},
-    
     # Bundesliga
     'Bayern Munich': {'attack': 93, 'defense': 84, 'forme': 89, 'league': 'Bundesliga'},
     'Borussia Dortmund': {'attack': 88, 'defense': 79, 'forme': 84, 'league': 'Bundesliga'},
@@ -81,7 +89,6 @@ TEAMS_STATS = {
 
 def normalize_team_name(team_name):
     """Normalise le nom d'équipe pour correspondre à notre base de données"""
-    # Dictionnaire de mapping pour les noms d'équipes
     team_mapping = {
         'Paris Saint-Germain': 'PSG',
         'Paris SG': 'PSG',
@@ -124,95 +131,83 @@ def normalize_team_name(team_name):
         'Eintracht Frankfurt': 'Eintracht Frankfurt',
         'Borussia Mönchengladbach': 'Borussia Mönchengladbach'
     }
-    
-    # Nettoyage du nom
     clean_name = team_name.strip()
-    
-    # Vérification directe
     if clean_name in TEAMS_STATS:
         return clean_name
-    
-    # Vérification avec mapping
     if clean_name in team_mapping:
         return team_mapping[clean_name]
-    
-    # Recherche partielle
     for mapped_name, standard_name in team_mapping.items():
         if mapped_name.lower() in clean_name.lower() or clean_name.lower() in mapped_name.lower():
             return standard_name
-    
-    # Si pas trouvé, retourner le nom original
     return clean_name
 
+
+def safe_web_request(url, timeout=10):
+    """Fonction sécurisée pour les requêtes web"""
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=timeout)
+        response.raise_for_status()
+        return response
+    except requests.RequestException as e:
+        print(f"Erreur lors de la requête vers {url}: {e}")
+        return None
+
+
 def scrape_lequipe_matches():
-    """Scrape les matches du jour depuis L'Équipe"""
+    """Scrape les matches du jour depuis L'Équipe avec gestion d'erreurs améliorée"""
     matches = []
     try:
-        # URL de L'Équipe pour les matches du jour
-        url = "https://www.lequipe.fr/Football/directs"
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        
-        if response.status_code == 200:
+        url = "https://www.lequipe.fr/Football/directs  "
+        response = safe_web_request(url)
+        if response and response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Recherche des matches (structure simplifiée)
-            match_elements = soup.find_all(['div', 'article'], class_=lambda x: x and ('match' in x.lower() or 'rencontre' in x.lower()))
-            
-            for element in match_elements[:8]:  # Limiter à 8 matches
+            match_elements = soup.find_all(['div', 'article'],
+                                           class_=lambda x: x and ('match' in x.lower() or 'rencontre' in x.lower()))
+            for element in match_elements[:8]:
                 try:
-                    # Extraction des noms d'équipes
-                    team_elements = element.find_all(['span', 'div'], class_=lambda x: x and ('equipe' in x.lower() or 'team' in x.lower()))
-                    
+                    team_elements = element.find_all(['span', 'div'],
+                                                     class_=lambda x: x and (
+                                                             'equipe' in x.lower() or 'team' in x.lower()))
                     if len(team_elements) >= 2:
                         home_team = normalize_team_name(team_elements[0].get_text(strip=True))
                         away_team = normalize_team_name(team_elements[1].get_text(strip=True))
-                        
-                        # Vérification que les équipes existent dans notre base
                         if home_team in TEAMS_STATS and away_team in TEAMS_STATS:
-                            # Extraction de l'heure
-                            time_element = element.find(['span', 'div'], class_=lambda x: x and ('heure' in x.lower() or 'time' in x.lower()))
+                            time_element = element.find(['span', 'div'],
+                                                        class_=lambda x: x and (
+                                                                'heure' in x.lower() or 'time' in x.lower()))
                             match_time = time_element.get_text(strip=True) if time_element else f"{random.randint(15, 21)}:{random.choice(['00', '15', '30', '45'])}"
-                            
                             matches.append({
                                 'home_team': home_team,
                                 'away_team': away_team,
                                 'time': match_time,
                                 'league': TEAMS_STATS[home_team]['league'],
-                                'source': 'L\'Équipe'
+                                'source': "L'Équipe"
                             })
                 except Exception as e:
                     continue
-                    
     except Exception as e:
         print(f"Erreur lors du scraping L'Équipe: {e}")
-    
     return matches
 
+
 def scrape_flashscore_matches():
-    """Scrape les matches depuis FlashScore (version simplifiée)"""
+    """Scrape les matches depuis FlashScore avec gestion d'erreurs améliorée"""
     matches = []
     try:
-        # API alternative gratuite pour les matches
-        url = "https://www.flashscore.com/football/"
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        
-        if response.status_code == 200:
+        url = "https://www.flashscore.com/football/  "
+        response = safe_web_request(url)
+        if response and response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Recherche des matches du jour
             match_rows = soup.find_all('div', class_=lambda x: x and 'event__match' in str(x))
-            
-            for row in match_rows[:6]:  # Limiter à 6 matches
+            for row in match_rows[:6]:
                 try:
                     teams = row.find_all('div', class_=lambda x: x and 'event__participant' in str(x))
                     if len(teams) >= 2:
                         home_team = normalize_team_name(teams[0].get_text(strip=True))
                         away_team = normalize_team_name(teams[1].get_text(strip=True))
-                        
                         if home_team in TEAMS_STATS and away_team in TEAMS_STATS:
                             time_elem = row.find('div', class_=lambda x: x and 'event__time' in str(x))
                             match_time = time_elem.get_text(strip=True) if time_elem else f"{random.randint(15, 21)}:00"
-                            
                             matches.append({
                                 'home_team': home_team,
                                 'away_team': away_team,
@@ -222,37 +217,28 @@ def scrape_flashscore_matches():
                             })
                 except Exception as e:
                     continue
-                    
     except Exception as e:
         print(f"Erreur lors du scraping FlashScore: {e}")
-    
     return matches
+
 
 def get_sample_real_matches():
     """Génère des matches réalistes basés sur les équipes réelles"""
     matches = []
     teams = list(TEAMS_STATS.keys())
-    
-    # Grouper par ligues
     leagues = {}
     for team, stats in TEAMS_STATS.items():
         league = stats['league']
         if league not in leagues:
             leagues[league] = []
         leagues[league].append(team)
-    
-    # Générer des matches par ligue
     for league, team_list in leagues.items():
-        if len(team_list) >= 4:  # Au moins 4 équipes pour faire 2 matches
-            # Mélanger les équipes
+        if len(team_list) >= 4:
             random.shuffle(team_list)
-            
-            # Créer 1-2 matches par ligue
             num_matches = min(2, len(team_list) // 2)
             for i in range(num_matches):
                 home_idx = i * 2
                 away_idx = i * 2 + 1
-                
                 if away_idx < len(team_list):
                     matches.append({
                         'home_team': team_list[home_idx],
@@ -261,53 +247,46 @@ def get_sample_real_matches():
                         'league': league,
                         'source': 'Génération réaliste'
                     })
-    
     return matches
+
 
 def get_daily_matches():
     """Récupère les matches du jour depuis plusieurs sources"""
     all_matches = []
-    
-    # Essayer le scraping de L'Équipe
     print("Tentative de scraping L'Équipe...")
-    lequipe_matches = scrape_lequipe_matches()
-    all_matches.extend(lequipe_matches)
-    
-    # Essayer le scraping de FlashScore si pas assez de matches
+    try:
+        lequipe_matches = scrape_lequipe_matches()
+        all_matches.extend(lequipe_matches)
+    except Exception as e:
+        print(f"Erreur scraping L'Équipe: {e}")
     if len(all_matches) < 3:
         print("Tentative de scraping FlashScore...")
-        flashscore_matches = scrape_flashscore_matches()
-        all_matches.extend(flashscore_matches)
-    
-    # Si toujours pas assez de matches, utiliser des matches réalistes
+        try:
+            flashscore_matches = scrape_flashscore_matches()
+            all_matches.extend(flashscore_matches)
+        except Exception as e:
+            print(f"Erreur scraping FlashScore: {e}")
     if len(all_matches) < 3:
         print("Génération de matches réalistes...")
         sample_matches = get_sample_real_matches()
         all_matches.extend(sample_matches)
-    
-    # Limiter à 8 matches et supprimer les doublons
     unique_matches = []
     seen_matches = set()
-    
     for match in all_matches:
         match_key = f"{match['home_team']}-{match['away_team']}"
         if match_key not in seen_matches:
             seen_matches.add(match_key)
             unique_matches.append(match)
-            
         if len(unique_matches) >= 8:
             break
-    
-    # Ajouter des IDs
     for i, match in enumerate(unique_matches):
         match['id'] = i + 1
-    
     return unique_matches
+
 
 def calculate_prediction(home_team, away_team):
     """Calcule les pronostics basés sur les statistiques des équipes"""
     if home_team not in TEAMS_STATS or away_team not in TEAMS_STATS:
-        # Statistiques par défaut si équipe non trouvée
         return {
             'home_prob': 40.0,
             'draw_prob': 30.0,
@@ -316,37 +295,24 @@ def calculate_prediction(home_team, away_team):
             'conseil': 'Match incertain',
             'confiance': 'Faible'
         }
-    
     home_stats = TEAMS_STATS[home_team]
     away_stats = TEAMS_STATS[away_team]
-    
-    # Calcul de la force globale avec bonus domicile (5 points)
     home_strength = (home_stats['attack'] + home_stats['defense'] + home_stats['forme']) / 3 + 5
     away_strength = (away_stats['attack'] + away_stats['defense'] + away_stats['forme']) / 3
-    
-    # Calcul des probabilités de base
     total_strength = home_strength + away_strength
     home_prob = (home_strength / total_strength) * 100
     away_prob = (away_strength / total_strength) * 100
-    
-    # Calcul de la probabilité de match nul
     strength_diff = abs(home_strength - away_strength)
     draw_prob = max(15, min(35, 30 - strength_diff * 0.5))
-    
-    # Normalisation des probabilités
     total_prob = home_prob + away_prob + draw_prob
     home_prob = (home_prob / total_prob) * 100
     away_prob = (away_prob / total_prob) * 100
     draw_prob = (draw_prob / total_prob) * 100
-    
-    # Prédiction du score
     home_expected = max(0, min(4, (home_stats['attack'] - away_stats['defense']) / 20 + 1))
     away_expected = max(0, min(4, (away_stats['attack'] - home_stats['defense']) / 20 + 0.5))
-    
     home_goals = round(home_expected)
     away_goals = round(away_expected)
-    
-    # Conseil et confiance
+    conseil = confiance = ""
     if home_prob > away_prob + 15:
         conseil = f"Victoire {home_team}"
         confiance = "Élevée" if home_prob > 55 else "Moyenne"
@@ -356,46 +322,43 @@ def calculate_prediction(home_team, away_team):
     else:
         conseil = "Match serré - Nul possible"
         confiance = "Moyenne"
-    
     return {
         'home_prob': round(home_prob, 1),
         'draw_prob': round(draw_prob, 1),
         'away_prob': round(away_prob, 1),
-        'predicted_score': f"{home_goals}-{away_goals}",
+        'predicted_score': f"{int(home_goals)}-{int(away_goals)}",
         'conseil': conseil,
         'confiance': confiance
     }
+
 
 @app.route('/')
 def index():
     """Page d'accueil avec les pronostics du jour"""
     matches = get_daily_matches()
-    
-    # Ajouter les prédictions à chaque match
     for match in matches:
         prediction = calculate_prediction(match['home_team'], match['away_team'])
         match.update(prediction)
-    
-    return render_template('index.html', 
-                         matches=matches, 
-                         date=datetime.now().strftime('%d/%m/%Y'),
-                         total_matches=len(matches))
+    return render_template('index.html',
+                           matches=matches,
+                           date=datetime.now().strftime('%d/%m/%Y'),
+                           total_matches=len(matches))
+
 
 @app.route('/api/predictions')
 def api_predictions():
     """API pour récupérer les prédictions en JSON"""
     matches = get_daily_matches()
-    
     for match in matches:
         prediction = calculate_prediction(match['home_team'], match['away_team'])
         match.update(prediction)
-    
     return jsonify({
         'date': datetime.now().strftime('%Y-%m-%d'),
         'matches': matches,
         'total_matches': len(matches),
         'sources': list(set([match.get('source', 'Inconnu') for match in matches]))
     })
+
 
 @app.route('/api/stats/<team>')
 def team_stats(team):
@@ -408,6 +371,7 @@ def team_stats(team):
         })
     return jsonify({'error': 'Équipe non trouvée'}), 404
 
+
 @app.route('/api/teams')
 def list_teams():
     """Liste toutes les équipes disponibles"""
@@ -417,17 +381,21 @@ def list_teams():
         if league not in teams_by_league:
             teams_by_league[league] = []
         teams_by_league[league].append(team)
-    
     return jsonify(teams_by_league)
 
-# Template HTML (identique au précédent mais avec info sur les sources)
-@app.before_first_request
+
+@app.route('/health')
+def health_check():
+    """Health check pour Render"""
+    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+
+
+@app.before_request
 def create_template():
     import os
-    
-    if not os.path.exists('templates'):
-        os.makedirs('templates')
-    
+    template_dir = 'templates'
+    if not os.path.exists(template_dir):
+        os.makedirs(template_dir)
     html_template = """
     <!DOCTYPE html>
     <html lang="fr">
@@ -441,37 +409,31 @@ def create_template():
                 padding: 0;
                 box-sizing: border-box;
             }
-            
             body {
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 min-height: 100vh;
                 padding: 20px;
             }
-            
             .container {
                 max-width: 1200px;
                 margin: 0 auto;
             }
-            
             header {
                 text-align: center;
                 color: white;
                 margin-bottom: 40px;
             }
-            
             h1 {
                 font-size: 2.5em;
                 margin-bottom: 10px;
                 text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
             }
-            
             .subtitle {
                 font-size: 1.2em;
                 opacity: 0.9;
                 margin-bottom: 10px;
             }
-            
             .info-badge {
                 background: rgba(255,255,255,0.2);
                 padding: 8px 16px;
@@ -480,14 +442,12 @@ def create_template():
                 margin: 5px;
                 display: inline-block;
             }
-            
             .matches-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
                 gap: 25px;
                 margin-top: 30px;
             }
-            
             .match-card {
                 background: white;
                 border-radius: 15px;
@@ -496,12 +456,10 @@ def create_template():
                 transition: transform 0.3s ease, box-shadow 0.3s ease;
                 position: relative;
             }
-            
             .match-card:hover {
                 transform: translateY(-5px);
                 box-shadow: 0 15px 40px rgba(0,0,0,0.2);
             }
-            
             .source-badge {
                 position: absolute;
                 top: 10px;
@@ -513,7 +471,6 @@ def create_template():
                 font-size: 0.7em;
                 font-weight: bold;
             }
-            
             .match-header {
                 display: flex;
                 justify-content: space-between;
@@ -522,7 +479,6 @@ def create_template():
                 padding-bottom: 15px;
                 border-bottom: 2px solid #f0f0f0;
             }
-            
             .league {
                 background: #4CAF50;
                 color: white;
@@ -531,51 +487,43 @@ def create_template():
                 font-size: 0.9em;
                 font-weight: bold;
             }
-            
             .match-time {
                 font-size: 1.1em;
                 font-weight: bold;
                 color: #666;
             }
-            
             .teams {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 margin-bottom: 20px;
             }
-            
             .team {
                 text-align: center;
                 flex: 1;
             }
-            
             .team-name {
                 font-size: 1.3em;
                 font-weight: bold;
                 color: #333;
                 margin-bottom: 5px;
             }
-            
             .team-prob {
                 font-size: 1.1em;
                 color: #666;
             }
-            
             .vs {
                 font-size: 1.5em;
                 font-weight: bold;
                 color: #999;
                 margin: 0 15px;
             }
-            
             .prediction {
                 background: #f8f9fa;
                 border-radius: 10px;
                 padding: 15px;
                 margin-bottom: 15px;
             }
-            
             .predicted-score {
                 text-align: center;
                 font-size: 1.4em;
@@ -583,13 +531,11 @@ def create_template():
                 color: #2196F3;
                 margin-bottom: 10px;
             }
-            
             .draw-prob {
                 text-align: center;
                 color: #666;
                 font-size: 0.9em;
             }
-            
             .conseil {
                 background: #e3f2fd;
                 border-left: 4px solid #2196F3;
@@ -597,29 +543,24 @@ def create_template():
                 border-radius: 5px;
                 margin-top: 15px;
             }
-            
             .conseil-text {
                 font-weight: bold;
                 color: #1976D2;
                 margin-bottom: 5px;
             }
-            
             .confiance {
                 font-size: 0.9em;
                 color: #666;
             }
-            
             .confiance-elevee { color: #4CAF50; font-weight: bold; }
             .confiance-moyenne { color: #FF9800; font-weight: bold; }
             .confiance-faible { color: #F44336; font-weight: bold; }
-            
             .footer {
                 text-align: center;
                 color: white;
                 margin-top: 40px;
                 opacity: 0.8;
             }
-            
             .refresh-btn {
                 background: rgba(255,255,255,0.2);
                 color: white;
@@ -631,21 +572,17 @@ def create_template():
                 margin-top: 20px;
                 transition: all 0.3s ease;
             }
-            
             .refresh-btn:hover {
                 background: white;
                 color: #667eea;
             }
-            
             @media (max-width: 768px) {
                 .matches-grid {
                     grid-template-columns: 1fr;
                 }
-                
                 h1 {
                     font-size: 2em;
                 }
-                
                 .match-card {
                     padding: 20px;
                 }
@@ -664,17 +601,14 @@ def create_template():
                 </div>
                 <button class="refresh-btn" onclick="location.reload()">🔄 Actualiser</button>
             </header>
-            
             <div class="matches-grid">
                 {% for match in matches %}
                 <div class="match-card">
                     <div class="source-badge">{{ match.source or 'Réel' }}</div>
-                    
                     <div class="match-header">
                         <span class="league">{{ match.league }}</span>
                         <span class="match-time">{{ match.time }}</span>
                     </div>
-                    
                     <div class="teams">
                         <div class="team">
                             <div class="team-name">{{ match.home_team }}</div>
@@ -686,12 +620,10 @@ def create_template():
                             <div class="team-prob">{{ match.away_prob }}%</div>
                         </div>
                     </div>
-                    
                     <div class="prediction">
                         <div class="predicted-score">{{ match.predicted_score }}</div>
                         <div class="draw-prob">Match nul: {{ match.draw_prob }}%</div>
                     </div>
-                    
                     <div class="conseil">
                         <div class="conseil-text">{{ match.conseil }}</div>
                         <div class="confiance confiance-{{ match.confiance|lower }}">
@@ -701,44 +633,44 @@ def create_template():
                 </div>
                 {% endfor %}
             </div>
-            
             <div class="footer">
                 <p>🎯 Pronostics basés sur des données réelles et l'analyse statistique</p>
                 <p>⚠️ Les paris sportifs présentent des risques. Jouez responsable.</p>
                 <p>🔄 Données mises à jour en temps réel via web scraping</p>
             </div>
         </div>
-        
         <script>
-            // Auto-refresh toutes les 5 minutes
-            setTimeout(() => {
-                location.reload();
-            }, 300000);
-            
-            // Afficher un message si pas de matches
+            setTimeout(() => location.reload(), 300000);
             if (document.querySelectorAll('.match-card').length === 0) {
                 document.querySelector('.matches-grid').innerHTML = `
                     <div style="text-align: center; color: white; font-size: 1.5em; padding: 40px;">
                         <p>🔍 Recherche des matches en cours...</p>
-                        <p style="font-size: 0.8em; margin-top: 20px;">Les sources sont actuellement inaccessibles. Veuillez rafraîchir la page.</p>
-                    </div>
-                `;
+                        <p style="font-size: 0.8em; margin-top: 20px;">Les sources sont actuellement indisponibles. Veuillez rafraîchir la page.</p>
+                    </div>`;
             }
         </script>
     </body>
     </html>
     """
-    
     with open('templates/index.html', 'w', encoding='utf-8') as f:
         f.write(html_template)
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Erreur interne du serveur'}), 500
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Endpoint non trouvé'}), 404
+
 
 if __name__ == '__main__':
     print("🚀 Démarrage de l'application de pronostics football...")
     print("📊 Base de données: {} équipes de {} ligues".format(
-        len(TEAMS_STATS), 
+        len(TEAMS_STATS),
         len(set(stats['league'] for stats in TEAMS_STATS.values()))
     ))
-    print("🔍 Sources: Web scraping + données réalistes")
     print("🌐 Accès: http://localhost:5000")
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
