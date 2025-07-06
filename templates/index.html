@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚽ Pronostics Football Réels - {{ date }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+        .info-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin: 5px;
+            display: inline-block;
+        }
+        .matches-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-top: 30px;
+        }
+        .match-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+        }
+        .match-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+        .source-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #FF6B6B;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 10px;
+            font-size: 0.7em;
+            font-weight: bold;
+        }
+        .match-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .league {
+            background: #4CAF50;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .match-time {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #666;
+        }
+        .teams {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .team {
+            text-align: center;
+            flex: 1;
+        }
+        .team-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .team-prob {
+            font-size: 1.1em;
+            color: #666;
+        }
+        .vs {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #999;
+            margin: 0 15px;
+        }
+        .prediction {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .predicted-score {
+            text-align: center;
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #2196F3;
+            margin-bottom: 10px;
+        }
+        .draw-prob {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+        }
+        .conseil {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .conseil-text {
+            font-weight: bold;
+            color: #1976D2;
+            margin-bottom: 5px;
+        }
+        .confiance {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .confiance-elevee { color: #4CAF50; font-weight: bold; }
+        .confiance-moyenne { color: #FF9800; font-weight: bold; }
+        .confiance-faible { color: #F44336; font-weight: bold; }
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            opacity: 0.8;
+        }
+        .refresh-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 20px;
+            transition: all 0.3s ease;
+        }
+        .refresh-btn:hover {
+            background: white;
+            color: #667eea;
+        }
+        @media (max-width: 768px) {
+            .matches-grid {
+                grid-template-columns: 1fr;
+            }
+            h1 {
+                font-size: 2em;
+            }
+            .match-card {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚽ Pronostics Football Réels</h1>
+            <p class="subtitle">Données réelles et prédictions pour le {{ date }}</p>
+            <div class="info-badges">
+                <span class="info-badge">🔍 Web Scraping</span>
+                <span class="info-badge">📊 {{ total_matches }} Matches</span>
+                <span class="info-badge">🎯 Prédictions IA</span>
+            </div>
+            <button class="refresh-btn" onclick="location.reload()">🔄 Actualiser</button>
+        </header>
+        <div class="matches-grid">
+            {% for match in matches %}
+            <div class="match-card">
+                <div class="source-badge">{{ match.source or 'Réel' }}</div>
+                <div class="match-header">
+                    <span class="league">{{ match.league }}</span>
+                    <span class="match-time">{{ match.time }}</span>
+                </div>
+                <div class="teams">
+                    <div class="team">
+                        <div class="team-name">{{ match.home_team }}</div>
+                        <div class="team-prob">{{ match.home_prob }}%</div>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="team">
+                        <div class="team-name">{{ match.away_team }}</div>
+                        <div class="team-prob">{{ match.away_prob }}%</div>
+                    </div>
+                </div>
+                <div class="prediction">
+                    <div class="predicted-score">{{ match.predicted_score }}</div>
+                    <div class="draw-prob">Match nul: {{ match.draw_prob }}%</div>
+                </div>
+                <div class="conseil">
+                    <div class="conseil-text">{{ match.conseil }}</div>
+                    <div class="confiance confiance-{{ match.confiance|lower }}">
+                        Confiance: {{ match.confiance }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="footer">
+            <p>🎯 Pronostics basés sur des données réelles et l'analyse statistique</p>
+            <p>⚠️ Les paris sportifs présentent des risques. Jouez responsable.</p>
+            <p>🔄 Données mises à jour en temps réel via web scraping</p>
+        </div>
+    </div>
+    <script>
+        setTimeout(() => location.reload(), 300000);
+        if (document.querySelectorAll('.match-card').length === 0) {
+            document.querySelector('.matches-grid').innerHTML = `
+                <div style="text-align: center; color: white; font-size: 1.5em; padding: 40px;">
+                    <p>🔍 Recherche des matches en cours...</p>
+                    <p style="font-size: 0.8em; margin-top: 20px;">Les sources sont actuellement indisponibles. Veuillez rafraîchir la page.</p>
+                </div>`;
+        }
+    </script>
+</body>
+</html>
