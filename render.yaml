@@ -1,12 +1,19 @@
 services:
   - type: web
     name: football-predictions
-    runtime: python-3.11.0
+    runtime: python3
+    plan: free
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app --workers 2 --timeout 60
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app --workers 1 --timeout 120 --max-requests 1000
     envVars:
       - key: PYTHONUNBUFFERED
-        value: "true"
+        value: "1"
       - key: FLASK_ENV
         value: production
+      - key: WEB_CONCURRENCY
+        value: "1"
     healthCheckPath: /health
+    # Scaling configuration
+    numInstances: 1
+    # Auto-deploy configuration
+    autoDeploy: true

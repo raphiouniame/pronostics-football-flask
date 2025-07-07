@@ -12,14 +12,13 @@ from urllib.parse import urljoin
 
 app = Flask(__name__)
 
-if not app.debug:
-    logging.basicConfig(
-        stream=sys.stdout,
-        level=logging.INFO,
-        format='%(asctime)s %(levelname)s %(name)s %(message)s'
-    )
-    app.logger.setLevel(logging.INFO)
-    app.logger.info('Application démarrée en mode production')
+# Configuration du logging pour Render
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 
 # Headers pour éviter la détection de bot
 HEADERS = {
@@ -149,7 +148,7 @@ def safe_web_request(url, timeout=10):
         response.raise_for_status()
         return response
     except requests.RequestException as e:
-        print(f"Erreur lors de la requête vers {url}: {e}")
+        logger.error(f"Erreur lors de la requête vers {url}: {e}")
         return None
 
 
@@ -157,9 +156,10 @@ def scrape_lequipe_matches():
     """Scrape les matches du jour depuis L'Équipe avec gestion d'erreurs améliorée"""
     matches = []
     try:
-        url = "https://www.lequipe.fr/Football/directs  "
+        url = "https://www.lequipe.fr/Football/directs"
         response = safe_web_request(url)
         if response and response.status_code == 200:
+            # Utilise le parser HTML intégré de Python au lieu de lxml
             soup = BeautifulSoup(response.content, 'html.parser')
             match_elements = soup.find_all(['div', 'article'],
                                            class_=lambda x: x and ('match' in x.lower() or 'rencontre' in x.lower()))
@@ -184,9 +184,10 @@ def scrape_lequipe_matches():
                                 'source': "L'Équipe"
                             })
                 except Exception as e:
+                    logger.warning(f"Erreur lors du parsing d'un match: {e}")
                     continue
     except Exception as e:
-        print(f"Erreur lors du scraping L'Équipe: {e}")
+        logger.error(f"Erreur lors du scraping L'Équipe: {e}")
     return matches
 
 
@@ -194,7 +195,7 @@ def scrape_flashscore_matches():
     """Scrape les matches depuis FlashScore avec gestion d'erreurs améliorée"""
     matches = []
     try:
-        url = "https://www.flashscore.com/football/  "
+        url = "https://www.flashscore.com/football/"
         response = safe_web_request(url)
         if response and response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -216,9 +217,10 @@ def scrape_flashscore_matches():
                                 'source': 'FlashScore'
                             })
                 except Exception as e:
+                    logger.warning(f"Erreur lors du parsing d'un match FlashScore: {e}")
                     continue
     except Exception as e:
-        print(f"Erreur lors du scraping FlashScore: {e}")
+        logger.error(f"Erreur lors du scraping FlashScore: {e}")
     return matches
 
 
@@ -227,11 +229,13 @@ def get_sample_real_matches():
     matches = []
     teams = list(TEAMS_STATS.keys())
     leagues = {}
+    
     for team, stats in TEAMS_STATS.items():
         league = stats['league']
         if league not in leagues:
             leagues[league] = []
         leagues[league].append(team)
+    
     for league, team_list in leagues.items():
         if len(team_list) >= 4:
             random.shuffle(team_list)
@@ -253,25 +257,34 @@ def get_sample_real_matches():
 def get_daily_matches():
     """Récupère les matches du jour depuis plusieurs sources"""
     all_matches = []
-    print("Tentative de scraping L'Équipe...")
+    
+    logger.info("Tentative de scraping L'Équipe...")
     try:
         lequipe_matches = scrape_lequipe_matches()
         all_matches.extend(lequipe_matches)
+        logger.info(f"Récupéré {len(lequipe_matches)} matches de L'Équipe")
     except Exception as e:
-        print(f"Erreur scraping L'Équipe: {e}")
+        logger.error(f"Erreur scraping L'Équipe: {e}")
+    
     if len(all_matches) < 3:
-        print("Tentative de scraping FlashScore...")
+        logger.info("Tentative de scraping FlashScore...")
         try:
             flashscore_matches = scrape_flashscore_matches()
             all_matches.extend(flashscore_matches)
+            logger.info(f"Récupéré {len(flashscore_matches)} matches de FlashScore")
         except Exception as e:
-            print(f"Erreur scraping FlashScore: {e}")
+            logger.error(f"Erreur scraping FlashScore: {e}")
+    
     if len(all_matches) < 3:
-        print("Génération de matches réalistes...")
+        logger.info("Génération de matches réalistes...")
         sample_matches = get_sample_real_matches()
         all_matches.extend(sample_matches)
+        logger.info(f"Généré {len(sample_matches)} matches réalistes")
+    
+    # Dédoublonnage
     unique_matches = []
     seen_matches = set()
+    
     for match in all_matches:
         match_key = f"{match['home_team']}-{match['away_team']}"
         if match_key not in seen_matches:
@@ -279,8 +292,11 @@ def get_daily_matches():
             unique_matches.append(match)
         if len(unique_matches) >= 8:
             break
+    
+    # Ajout des IDs
     for i, match in enumerate(unique_matches):
         match['id'] = i + 1
+    
     return unique_matches
 
 
@@ -295,24 +311,38 @@ def calculate_prediction(home_team, away_team):
             'conseil': 'Match incertain',
             'confiance': 'Faible'
         }
+    
     home_stats = TEAMS_STATS[home_team]
     away_stats = TEAMS_STATS[away_team]
+    
+    # Calcul des forces avec avantage domicile
     home_strength = (home_stats['attack'] + home_stats['defense'] + home_stats['forme']) / 3 + 5
     away_strength = (away_stats['attack'] + away_stats['defense'] + away_stats['forme']) / 3
+    
     total_strength = home_strength + away_strength
+    
+    # Calcul des probabilités
     home_prob = (home_strength / total_strength) * 100
     away_prob = (away_strength / total_strength) * 100
+    
+    # Calcul du pourcentage de match nul
     strength_diff = abs(home_strength - away_strength)
     draw_prob = max(15, min(35, 30 - strength_diff * 0.5))
+    
+    # Normalisation
     total_prob = home_prob + away_prob + draw_prob
     home_prob = (home_prob / total_prob) * 100
     away_prob = (away_prob / total_prob) * 100
     draw_prob = (draw_prob / total_prob) * 100
+    
+    # Prédiction du score
     home_expected = max(0, min(4, (home_stats['attack'] - away_stats['defense']) / 20 + 1))
     away_expected = max(0, min(4, (away_stats['attack'] - home_stats['defense']) / 20 + 0.5))
+    
     home_goals = round(home_expected)
     away_goals = round(away_expected)
-    conseil = confiance = ""
+    
+    # Conseil et confiance
     if home_prob > away_prob + 15:
         conseil = f"Victoire {home_team}"
         confiance = "Élevée" if home_prob > 55 else "Moyenne"
@@ -322,6 +352,7 @@ def calculate_prediction(home_team, away_team):
     else:
         conseil = "Match serré - Nul possible"
         confiance = "Moyenne"
+    
     return {
         'home_prob': round(home_prob, 1),
         'draw_prob': round(draw_prob, 1),
@@ -335,63 +366,87 @@ def calculate_prediction(home_team, away_team):
 @app.route('/')
 def index():
     """Page d'accueil avec les pronostics du jour"""
-    matches = get_daily_matches()
-    for match in matches:
-        prediction = calculate_prediction(match['home_team'], match['away_team'])
-        match.update(prediction)
-    return render_template('index.html',
-                           matches=matches,
-                           date=datetime.now().strftime('%d/%m/%Y'),
-                           total_matches=len(matches))
+    try:
+        matches = get_daily_matches()
+        for match in matches:
+            prediction = calculate_prediction(match['home_team'], match['away_team'])
+            match.update(prediction)
+        
+        return render_template('index.html',
+                               matches=matches,
+                               date=datetime.now().strftime('%d/%m/%Y'),
+                               total_matches=len(matches))
+    except Exception as e:
+        logger.error(f"Erreur dans la route index: {e}")
+        return jsonify({'error': 'Erreur lors du chargement des données'}), 500
 
 
 @app.route('/api/predictions')
 def api_predictions():
     """API pour récupérer les prédictions en JSON"""
-    matches = get_daily_matches()
-    for match in matches:
-        prediction = calculate_prediction(match['home_team'], match['away_team'])
-        match.update(prediction)
-    return jsonify({
-        'date': datetime.now().strftime('%Y-%m-%d'),
-        'matches': matches,
-        'total_matches': len(matches),
-        'sources': list(set([match.get('source', 'Inconnu') for match in matches]))
-    })
+    try:
+        matches = get_daily_matches()
+        for match in matches:
+            prediction = calculate_prediction(match['home_team'], match['away_team'])
+            match.update(prediction)
+        
+        return jsonify({
+            'date': datetime.now().strftime('%Y-%m-%d'),
+            'matches': matches,
+            'total_matches': len(matches),
+            'sources': list(set([match.get('source', 'Inconnu') for match in matches]))
+        })
+    except Exception as e:
+        logger.error(f"Erreur dans l'API predictions: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération des prédictions'}), 500
 
 
 @app.route('/api/stats/<team>')
 def team_stats(team):
     """Affiche les statistiques d'une équipe"""
-    normalized_team = normalize_team_name(team)
-    if normalized_team in TEAMS_STATS:
-        return jsonify({
-            'team': normalized_team,
-            'stats': TEAMS_STATS[normalized_team]
-        })
-    return jsonify({'error': 'Équipe non trouvée'}), 404
+    try:
+        normalized_team = normalize_team_name(team)
+        if normalized_team in TEAMS_STATS:
+            return jsonify({
+                'team': normalized_team,
+                'stats': TEAMS_STATS[normalized_team]
+            })
+        return jsonify({'error': 'Équipe non trouvée'}), 404
+    except Exception as e:
+        logger.error(f"Erreur dans team_stats: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération des statistiques'}), 500
 
 
 @app.route('/api/teams')
 def list_teams():
     """Liste toutes les équipes disponibles"""
-    teams_by_league = {}
-    for team, stats in TEAMS_STATS.items():
-        league = stats['league']
-        if league not in teams_by_league:
-            teams_by_league[league] = []
-        teams_by_league[league].append(team)
-    return jsonify(teams_by_league)
+    try:
+        teams_by_league = {}
+        for team, stats in TEAMS_STATS.items():
+            league = stats['league']
+            if league not in teams_by_league:
+                teams_by_league[league] = []
+            teams_by_league[league].append(team)
+        
+        return jsonify(teams_by_league)
+    except Exception as e:
+        logger.error(f"Erreur dans list_teams: {e}")
+        return jsonify({'error': 'Erreur lors de la récupération des équipes'}), 500
 
 
 @app.route('/health')
 def health_check():
     """Health check pour Render"""
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+    return jsonify({
+        'status': 'healthy', 
+        'timestamp': datetime.now().isoformat(),
+        'teams_count': len(TEAMS_STATS)
+    })
 
 
 @app.errorhandler(500)
 def internal_error(error):
+    logger.error(f"Erreur interne 500: {error}")
     return jsonify({'error': 'Erreur interne du serveur'}), 500
 
 
@@ -401,10 +456,8 @@ def not_found(error):
 
 
 if __name__ == '__main__':
-    print("Démarrage de l'application de pronostics football...")
-    print("Base de données: {} équipes de {} ligues".format(
-        len(TEAMS_STATS),
-        len(set(stats['league'] for stats in TEAMS_STATS.values()))
-    ))
-    print("Accès: http://localhost:5000")
-    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    port = int(os.environ.get('PORT', 5000))
+    logger.info(f"Démarrage de l'application de pronostics football sur le port {port}")
+    logger.info(f"Base de données: {len(TEAMS_STATS)} équipes de {len(set(stats['league'] for stats in TEAMS_STATS.values()))} ligues")
+    
+    app.run(debug=False, host='0.0.0.0', port=port)
