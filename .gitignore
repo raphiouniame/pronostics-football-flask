@@ -148,4 +148,5 @@ debug.log
 error.log
 
 # Fichiers de profiling
-*.prof
+*.prof.env
+.env
