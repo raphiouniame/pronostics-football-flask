@@ -12,8 +12,10 @@ services:
         value: production
       - key: WEB_CONCURRENCY
         value: "1"
+      # ⚠️ IMPORTANT: Configurez cette variable dans le dashboard Render
+      # Ne pas mettre la clé API ici directement !
       - key: API_SPORTS_KEY
-        value: ad85ef7e4829d974cc5bda18dd6fe7e7
+        sync: false  # Indique que cette variable doit être configurée manuellement
     healthCheckPath: /health
     numInstances: 1
     autoDeploy: true

@@ -124,25 +124,39 @@ def get_api_sports_matches():
     try:
         api_key = os.getenv("API_SPORTS_KEY")
         if not api_key:
-            raise ValueError("La clé API 'API_SPORTS_KEY' est manquante !")
+            logger.warning("La clé API 'API_SPORTS_KEY' est manquante !")
+            return []
 
         today = datetime.now().strftime("%Y-%m-%d")
         url = f"https://v3.football.api-sports.io/fixtures?date={today}"
-        headers = {"x-apisports-key": api_key}
-        response = safe_web_request(url)
-
-        if not response:
-            logger.warning("Aucune réponse reçue de l'API Sports")
-            return []
+        headers = {
+            "x-apisports-key": api_key,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        
+        # Utiliser les bons headers directement
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
 
         data = response.json()
+        
+        # Vérifier si l'API retourne des erreurs
+        if "errors" in data and data["errors"]:
+            logger.error(f"Erreur API Sports: {data['errors']}")
+            return []
+            
         fixtures = data.get("response", [])
+        logger.info(f"API Sports - {len(fixtures)} matchs trouvés")
 
         for fixture in fixtures[:8]:
             teams = fixture.get("teams", {})
+            if not teams or "home" not in teams or "away" not in teams:
+                continue
+                
             home_team = normalize_team_name(teams["home"]["name"])
             away_team = normalize_team_name(teams["away"]["name"])
 
+            # Vérifier que les équipes sont dans notre base
             if home_team in TEAMS_STATS and away_team in TEAMS_STATS:
                 matches.append({
                     "home_team": home_team,
@@ -152,11 +166,19 @@ def get_api_sports_matches():
                     "source": "API-Sports.io"
                 })
 
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 403:
+            logger.error("Erreur 403 - Clé API invalide ou quota dépassé")
+        elif e.response.status_code == 429:
+            logger.error("Erreur 429 - Trop de requêtes")
+        else:
+            logger.error(f"Erreur HTTP {e.response.status_code}: {e}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Erreur de requête vers API-Sports.io: {e}")
     except Exception as e:
-        logger.error(f"Erreur lors de l'appel à API-Sports.io: {e}")
+        logger.error(f"Erreur inattendue dans get_api_sports_matches: {e}")
 
     return matches
-
 def get_sample_real_matches():
     matches = []
     teams = list(TEAMS_STATS.keys())
@@ -190,17 +212,35 @@ def get_daily_matches():
     logger.info("Tentative d'appel à API-Sports.io...")
     try:
         sports_matches = get_api_sports_matches()
-        all_matches.extend(sports_matches)
-        logger.info(f"Récupéré {len(sports_matches)} matchs depuis API-Sports.io")
+        if sports_matches:
+            all_matches.extend(sports_matches)
+            logger.info(f"✅ Récupéré {len(sports_matches)} matchs depuis API-Sports.io")
+        else:
+            logger.warning("⚠️ Aucun match récupéré depuis API-Sports.io")
     except Exception as e:
-        logger.error(f"Erreur lors de l'appel à API-Sports.io: {e}")
+        logger.error(f"❌ Erreur lors de l'appel à API-Sports.io: {e}")
 
+    # Fallback si pas assez de matchs
     if len(all_matches) < 2:
-        logger.info("Fallback sur des matchs fictifs (à éviter en prod)")
-        sample_matches = get_sample_real_matches()
-        all_matches.extend(sample_matches)
-        logger.info(f"Généré {len(sample_matches)} matchs fictifs")
+        logger.info("🔄 Activation du fallback - génération de matchs fictifs")
+        try:
+            sample_matches = get_sample_real_matches()
+            all_matches.extend(sample_matches)
+            logger.info(f"✅ Généré {len(sample_matches)} matchs fictifs")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la génération de matchs fictifs: {e}")
+            # Dernier fallback - matchs par défaut
+            all_matches = [
+                {
+                    'home_team': 'PSG',
+                    'away_team': 'Monaco',
+                    'time': '20:00',
+                    'league': 'Ligue 1',
+                    'source': 'Fallback par défaut'
+                }
+            ]
 
+    # Déduplication
     seen = set()
     unique_matches = []
     for m in all_matches:
@@ -209,8 +249,10 @@ def get_daily_matches():
             seen.add(key)
             unique_matches.append(m)
 
-    return unique_matches[:8]
-
+    result = unique_matches[:8]
+    logger.info(f"📊 Retour de {len(result)} matchs uniques")
+    return result
+    
 def calculate_prediction(home_team, away_team):
     if home_team not in TEAMS_STATS or away_team not in TEAMS_STATS:
         return {
