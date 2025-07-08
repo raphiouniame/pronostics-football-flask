@@ -2,17 +2,17 @@ import os
 import logging
 import sys
 from flask import Flask, render_template, jsonify
-from datetime import datetime, timedelta
+from datetime import datetime
 import requests
-from bs4 import BeautifulSoup
-import re
-import json
 import random
-from urllib.parse import urljoin
+
+# Charger les variables d'environnement depuis .env
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 
-# Configuration du logging pour Render
+# Configuration du logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s %(name)s %(message)s',
@@ -20,12 +20,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Headers pour éviter la détection de bot
+# Headers HTTP
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 }
 
-# Base de données des équipes avec leurs statistiques (mise à jour)
+# Statistiques des équipes (pour vos prédictions)
 TEAMS_STATS = {
     # Ligue 1
     'PSG': {'attack': 92, 'defense': 85, 'forme': 88, 'league': 'Ligue 1'},
@@ -86,63 +86,31 @@ TEAMS_STATS = {
     'Borussia Mönchengladbach': {'attack': 74, 'defense': 72, 'forme': 73, 'league': 'Bundesliga'},
 }
 
-def normalize_team_name(team_name):
-    """Normalise le nom d'équipe pour correspondre à notre base de données"""
-    team_mapping = {
-        'Paris Saint-Germain': 'PSG',
-        'Paris SG': 'PSG',
-        'AS Monaco': 'Monaco',
-        'Olympique de Marseille': 'Marseille',
-        'Olympique Lyonnais': 'Lyon',
-        'LOSC Lille': 'Lille',
-        'Stade Rennais': 'Rennes',
-        'OGC Nice': 'Nice',
-        'RC Lens': 'Lens',
-        'FC Nantes': 'Nantes',
-        'Montpellier HSC': 'Montpellier',
-        'Stade de Reims': 'Reims',
-        'Stade Brestois': 'Brest',
-        'AS Saint-Étienne': 'Saint-Étienne',
-        'AJ Auxerre': 'Auxerre',
-        'SCO Angers': 'Angers',
-        'Toulouse FC': 'Toulouse',
-        'Le Havre AC': 'Le Havre',
-        'RC Strasbourg': 'Strasbourg',
-        'Man City': 'Manchester City',
-        'Man United': 'Manchester United',
-        'Tottenham Hotspur': 'Tottenham',
-        'Newcastle United': 'Newcastle',
-        'Brighton & Hove Albion': 'Brighton',
-        'West Ham United': 'West Ham',
-        'Real Sociedad': 'Real Sociedad',
-        'Athletic Club': 'Athletic Bilbao',
-        'Real Betis': 'Betis',
-        'FC Barcelona': 'Barcelona',
-        'Inter': 'Inter Milan',
-        'Milan': 'AC Milan',
-        'AS Roma': 'Roma',
-        'SS Lazio': 'Lazio',
-        'FC Bayern Munich': 'Bayern Munich',
-        'Bayern München': 'Bayern Munich',
-        'Borussia Dortmund': 'Borussia Dortmund',
-        'RasenBallsport Leipzig': 'RB Leipzig',
-        'Bayer 04 Leverkusen': 'Bayer Leverkusen',
-        'Eintracht Frankfurt': 'Eintracht Frankfurt',
-        'Borussia Mönchengladbach': 'Borussia Mönchengladbach'
-    }
-    clean_name = team_name.strip()
-    if clean_name in TEAMS_STATS:
-        return clean_name
-    if clean_name in team_mapping:
-        return team_mapping[clean_name]
-    for mapped_name, standard_name in team_mapping.items():
-        if mapped_name.lower() in clean_name.lower() or clean_name.lower() in mapped_name.lower():
-            return standard_name
-    return clean_name
+# Mapping des noms d'équipes pour normalisation
+team_mapping = {
+    'Paris Saint-Germain': 'PSG', 'Paris SG': 'PSG', 'AS Monaco': 'Monaco',
+    'Olympique de Marseille': 'Marseille', 'Olympique Lyonnais': 'Lyon',
+    'LOSC Lille': 'Lille', 'Stade Rennais': 'Rennes', 'OGC Nice': 'Nice',
+    'RC Lens': 'Lens', 'FC Nantes': 'Nantes', 'Montpellier HSC': 'Montpellier',
+    'Stade de Reims': 'Reims', 'Stade Brestois': 'Brest',
+    'AS Saint-Étienne': 'Saint-Étienne', 'AJ Auxerre': 'Auxerre',
+    'SCO Angers': 'Angers', 'Toulouse FC': 'Toulouse', 'Le Havre AC': 'Le Havre',
+    'RC Strasbourg': 'Strasbourg', 'Man City': 'Manchester City',
+    'Man United': 'Manchester United', 'Tottenham Hotspur': 'Tottenham',
+    'Newcastle United': 'Newcastle', 'Brighton & Hove Albion': 'Brighton',
+    'West Ham United': 'West Ham', 'Real Sociedad': 'Real Sociedad',
+    'Athletic Club': 'Athletic Bilbao', 'Real Betis': 'Betis',
+    'FC Barcelona': 'Barcelona', 'Inter': 'Inter Milan', 'Milan': 'AC Milan',
+    'AS Roma': 'Roma', 'SS Lazio': 'Lazio', 'FC Bayern Munich': 'Bayern Munich',
+    'Bayern München': 'Bayern Munich', 'Borussia Dortmund': 'Borussia Dortmund',
+    'RasenBallsport Leipzig': 'RB Leipzig', 'Bayer 04 Leverkusen': 'Bayer Leverkusen',
+    'Eintracht Frankfurt': 'Eintracht Frankfurt', 'Borussia Mönchengladbach': 'Borussia Mönchengladbach'
+}
 
+def normalize_team_name(team_name):
+    return team_mapping.get(team_name.strip(), team_name.strip())
 
 def safe_web_request(url, timeout=10):
-    """Fonction sécurisée pour les requêtes web"""
     try:
         response = requests.get(url, headers=HEADERS, timeout=timeout)
         response.raise_for_status()
@@ -151,91 +119,54 @@ def safe_web_request(url, timeout=10):
         logger.error(f"Erreur lors de la requête vers {url}: {e}")
         return None
 
-
-def scrape_lequipe_matches():
-    """Scrape les matches du jour depuis L'Équipe avec gestion d'erreurs améliorée"""
+def get_api_sports_matches():
     matches = []
     try:
-        url = "https://www.lequipe.fr/Football/directs"
+        api_key = os.getenv("API_SPORTS_KEY")
+        if not api_key:
+            raise ValueError("La clé API 'API_SPORTS_KEY' est manquante !")
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        url = f"https://v3.football.api-sports.io/fixtures?date={today}"
+        headers = {"x-apisports-key": api_key}
         response = safe_web_request(url)
-        if response and response.status_code == 200:
-            # Utilise le parser HTML intégré de Python au lieu de lxml
-            soup = BeautifulSoup(response.content, 'html.parser')
-            match_elements = soup.find_all(['div', 'article'],
-                                           class_=lambda x: x and ('match' in x.lower() or 'rencontre' in x.lower()))
-            for element in match_elements[:8]:
-                try:
-                    team_elements = element.find_all(['span', 'div'],
-                                                     class_=lambda x: x and (
-                                                             'equipe' in x.lower() or 'team' in x.lower()))
-                    if len(team_elements) >= 2:
-                        home_team = normalize_team_name(team_elements[0].get_text(strip=True))
-                        away_team = normalize_team_name(team_elements[1].get_text(strip=True))
-                        if home_team in TEAMS_STATS and away_team in TEAMS_STATS:
-                            time_element = element.find(['span', 'div'],
-                                                        class_=lambda x: x and (
-                                                                'heure' in x.lower() or 'time' in x.lower()))
-                            match_time = time_element.get_text(strip=True) if time_element else f"{random.randint(15, 21)}:{random.choice(['00', '15', '30', '45'])}"
-                            matches.append({
-                                'home_team': home_team,
-                                'away_team': away_team,
-                                'time': match_time,
-                                'league': TEAMS_STATS[home_team]['league'],
-                                'source': "L'Équipe"
-                            })
-                except Exception as e:
-                    logger.warning(f"Erreur lors du parsing d'un match: {e}")
-                    continue
+
+        if not response:
+            logger.warning("Aucune réponse reçue de l'API Sports")
+            return []
+
+        data = response.json()
+        fixtures = data.get("response", [])
+
+        for fixture in fixtures[:8]:
+            teams = fixture.get("teams", {})
+            home_team = normalize_team_name(teams["home"]["name"])
+            away_team = normalize_team_name(teams["away"]["name"])
+
+            if home_team in TEAMS_STATS and away_team in TEAMS_STATS:
+                matches.append({
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "time": fixture["fixture"]["date"][11:16],
+                    "league": fixture.get("league", {}).get("name", "Inconnu"),
+                    "source": "API-Sports.io"
+                })
+
     except Exception as e:
-        logger.error(f"Erreur lors du scraping L'Équipe: {e}")
+        logger.error(f"Erreur lors de l'appel à API-Sports.io: {e}")
+
     return matches
-
-
-def scrape_flashscore_matches():
-    """Scrape les matches depuis FlashScore avec gestion d'erreurs améliorée"""
-    matches = []
-    try:
-        url = "https://www.flashscore.com/football/"
-        response = safe_web_request(url)
-        if response and response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            match_rows = soup.find_all('div', class_=lambda x: x and 'event__match' in str(x))
-            for row in match_rows[:6]:
-                try:
-                    teams = row.find_all('div', class_=lambda x: x and 'event__participant' in str(x))
-                    if len(teams) >= 2:
-                        home_team = normalize_team_name(teams[0].get_text(strip=True))
-                        away_team = normalize_team_name(teams[1].get_text(strip=True))
-                        if home_team in TEAMS_STATS and away_team in TEAMS_STATS:
-                            time_elem = row.find('div', class_=lambda x: x and 'event__time' in str(x))
-                            match_time = time_elem.get_text(strip=True) if time_elem else f"{random.randint(15, 21)}:00"
-                            matches.append({
-                                'home_team': home_team,
-                                'away_team': away_team,
-                                'time': match_time,
-                                'league': TEAMS_STATS[home_team]['league'],
-                                'source': 'FlashScore'
-                            })
-                except Exception as e:
-                    logger.warning(f"Erreur lors du parsing d'un match FlashScore: {e}")
-                    continue
-    except Exception as e:
-        logger.error(f"Erreur lors du scraping FlashScore: {e}")
-    return matches
-
 
 def get_sample_real_matches():
-    """Génère des matches réalistes basés sur les équipes réelles"""
     matches = []
     teams = list(TEAMS_STATS.keys())
     leagues = {}
-    
     for team, stats in TEAMS_STATS.items():
         league = stats['league']
         if league not in leagues:
             leagues[league] = []
         leagues[league].append(team)
-    
+
     for league, team_list in leagues.items():
         if len(team_list) >= 4:
             random.shuffle(team_list)
@@ -253,96 +184,58 @@ def get_sample_real_matches():
                     })
     return matches
 
-
 def get_daily_matches():
-    """Récupère les matches du jour depuis plusieurs sources"""
     all_matches = []
-    
-    logger.info("Tentative de scraping L'Équipe...")
+
+    logger.info("Tentative d'appel à API-Sports.io...")
     try:
-        lequipe_matches = scrape_lequipe_matches()
-        all_matches.extend(lequipe_matches)
-        logger.info(f"Récupéré {len(lequipe_matches)} matches de L'Équipe")
+        sports_matches = get_api_sports_matches()
+        all_matches.extend(sports_matches)
+        logger.info(f"Récupéré {len(sports_matches)} matchs depuis API-Sports.io")
     except Exception as e:
-        logger.error(f"Erreur scraping L'Équipe: {e}")
-    
-    if len(all_matches) < 3:
-        logger.info("Tentative de scraping FlashScore...")
-        try:
-            flashscore_matches = scrape_flashscore_matches()
-            all_matches.extend(flashscore_matches)
-            logger.info(f"Récupéré {len(flashscore_matches)} matches de FlashScore")
-        except Exception as e:
-            logger.error(f"Erreur scraping FlashScore: {e}")
-    
-    if len(all_matches) < 3:
-        logger.info("Génération de matches réalistes...")
+        logger.error(f"Erreur lors de l'appel à API-Sports.io: {e}")
+
+    if len(all_matches) < 2:
+        logger.info("Fallback sur des matchs fictifs (à éviter en prod)")
         sample_matches = get_sample_real_matches()
         all_matches.extend(sample_matches)
-        logger.info(f"Généré {len(sample_matches)} matches réalistes")
-    
-    # Dédoublonnage
-    unique_matches = []
-    seen_matches = set()
-    
-    for match in all_matches:
-        match_key = f"{match['home_team']}-{match['away_team']}"
-        if match_key not in seen_matches:
-            seen_matches.add(match_key)
-            unique_matches.append(match)
-        if len(unique_matches) >= 8:
-            break
-    
-    # Ajout des IDs
-    for i, match in enumerate(unique_matches):
-        match['id'] = i + 1
-    
-    return unique_matches
+        logger.info(f"Généré {len(sample_matches)} matchs fictifs")
 
+    seen = set()
+    unique_matches = []
+    for m in all_matches:
+        key = (m['home_team'], m['away_team'])
+        if key not in seen:
+            seen.add(key)
+            unique_matches.append(m)
+
+    return unique_matches[:8]
 
 def calculate_prediction(home_team, away_team):
-    """Calcule les pronostics basés sur les statistiques des équipes"""
     if home_team not in TEAMS_STATS or away_team not in TEAMS_STATS:
         return {
-            'home_prob': 40.0,
-            'draw_prob': 30.0,
-            'away_prob': 30.0,
-            'predicted_score': '1-1',
-            'conseil': 'Match incertain',
-            'confiance': 'Faible'
+            'home_prob': 40.0, 'draw_prob': 30.0, 'away_prob': 30.0,
+            'predicted_score': '1-1', 'conseil': 'Match incertain', 'confiance': 'Faible'
         }
-    
+
     home_stats = TEAMS_STATS[home_team]
     away_stats = TEAMS_STATS[away_team]
-    
-    # Calcul des forces avec avantage domicile
     home_strength = (home_stats['attack'] + home_stats['defense'] + home_stats['forme']) / 3 + 5
     away_strength = (away_stats['attack'] + away_stats['defense'] + away_stats['forme']) / 3
-    
     total_strength = home_strength + away_strength
-    
-    # Calcul des probabilités
+
     home_prob = (home_strength / total_strength) * 100
     away_prob = (away_strength / total_strength) * 100
-    
-    # Calcul du pourcentage de match nul
     strength_diff = abs(home_strength - away_strength)
     draw_prob = max(15, min(35, 30 - strength_diff * 0.5))
-    
-    # Normalisation
     total_prob = home_prob + away_prob + draw_prob
     home_prob = (home_prob / total_prob) * 100
     away_prob = (away_prob / total_prob) * 100
     draw_prob = (draw_prob / total_prob) * 100
-    
-    # Prédiction du score
-    home_expected = max(0, min(4, (home_stats['attack'] - away_stats['defense']) / 20 + 1))
-    away_expected = max(0, min(4, (away_stats['attack'] - home_stats['defense']) / 20 + 0.5))
-    
-    home_goals = round(home_expected)
-    away_goals = round(away_expected)
-    
-    # Conseil et confiance
+
+    home_goals = round(max(0, min(4, (home_stats['attack'] - away_stats['defense']) / 20 + 1)))
+    away_goals = round(max(0, min(4, (away_stats['attack'] - home_stats['defense']) / 20 + 0.5)))
+
     if home_prob > away_prob + 15:
         conseil = f"Victoire {home_team}"
         confiance = "Élevée" if home_prob > 55 else "Moyenne"
@@ -352,7 +245,7 @@ def calculate_prediction(home_team, away_team):
     else:
         conseil = "Match serré - Nul possible"
         confiance = "Moyenne"
-    
+
     return {
         'home_prob': round(home_prob, 1),
         'draw_prob': round(draw_prob, 1),
@@ -362,16 +255,13 @@ def calculate_prediction(home_team, away_team):
         'confiance': confiance
     }
 
-
 @app.route('/')
 def index():
-    """Page d'accueil avec les pronostics du jour"""
     try:
         matches = get_daily_matches()
         for match in matches:
             prediction = calculate_prediction(match['home_team'], match['away_team'])
             match.update(prediction)
-        
         return render_template('index.html',
                                matches=matches,
                                date=datetime.now().strftime('%d/%m/%Y'),
@@ -380,16 +270,13 @@ def index():
         logger.error(f"Erreur dans la route index: {e}")
         return jsonify({'error': 'Erreur lors du chargement des données'}), 500
 
-
 @app.route('/api/predictions')
 def api_predictions():
-    """API pour récupérer les prédictions en JSON"""
     try:
         matches = get_daily_matches()
         for match in matches:
             prediction = calculate_prediction(match['home_team'], match['away_team'])
             match.update(prediction)
-        
         return jsonify({
             'date': datetime.now().strftime('%Y-%m-%d'),
             'matches': matches,
@@ -398,66 +285,14 @@ def api_predictions():
         })
     except Exception as e:
         logger.error(f"Erreur dans l'API predictions: {e}")
-        return jsonify({'error': 'Erreur lors de la récupération des prédictions'}), 500
-
-
-@app.route('/api/stats/<team>')
-def team_stats(team):
-    """Affiche les statistiques d'une équipe"""
-    try:
-        normalized_team = normalize_team_name(team)
-        if normalized_team in TEAMS_STATS:
-            return jsonify({
-                'team': normalized_team,
-                'stats': TEAMS_STATS[normalized_team]
-            })
-        return jsonify({'error': 'Équipe non trouvée'}), 404
-    except Exception as e:
-        logger.error(f"Erreur dans team_stats: {e}")
-        return jsonify({'error': 'Erreur lors de la récupération des statistiques'}), 500
-
-
-@app.route('/api/teams')
-def list_teams():
-    """Liste toutes les équipes disponibles"""
-    try:
-        teams_by_league = {}
-        for team, stats in TEAMS_STATS.items():
-            league = stats['league']
-            if league not in teams_by_league:
-                teams_by_league[league] = []
-            teams_by_league[league].append(team)
-        
-        return jsonify(teams_by_league)
-    except Exception as e:
-        logger.error(f"Erreur dans list_teams: {e}")
-        return jsonify({'error': 'Erreur lors de la récupération des équipes'}), 500
-
+        return jsonify({'error': 'Erreur interne serveur'}), 500
 
 @app.route('/health')
 def health_check():
-    """Health check pour Render"""
-    return jsonify({
-        'status': 'healthy', 
-        'timestamp': datetime.now().isoformat(),
-        'teams_count': len(TEAMS_STATS)
-    })
-
-
-@app.errorhandler(500)
-def internal_error(error):
-    logger.error(f"Erreur interne 500: {error}")
-    return jsonify({'error': 'Erreur interne du serveur'}), 500
-
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Endpoint non trouvé'}), 404
-
+    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"Démarrage de l'application de pronostics football sur le port {port}")
-    logger.info(f"Base de données: {len(TEAMS_STATS)} équipes de {len(set(stats['league'] for stats in TEAMS_STATS.values()))} ligues")
-    
+    logger.info(f"Démarrage de l'application sur le port {port}")
+    logger.info(f"{len(TEAMS_STATS)} équipes de {len(set(stats['league'] for stats in TEAMS_STATS.values()))} ligues")
     app.run(debug=False, host='0.0.0.0', port=port)

@@ -12,8 +12,8 @@ services:
         value: production
       - key: WEB_CONCURRENCY
         value: "1"
+      - key: API_SPORTS_KEY
+        value: ad85ef7e4829d974cc5bda18dd6fe7e7
     healthCheckPath: /health
-    # Scaling configuration
     numInstances: 1
-    # Auto-deploy configuration
     autoDeploy: true
